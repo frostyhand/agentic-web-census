@@ -29,7 +29,8 @@ Some of these paths are fixed by a published specification and some are proposal
 ## How it behaves
 
 - **Read-only.** It sends about ten GET requests per site and nothing else.
-- **It says what it is.** The user agent is `AgenticWebCensus/0.1 (research; read-only; checks public discovery files)`.
+- **It says what it is.** The user agent is `AgenticWebCensus/0.1 (+https://github.com/frostyhand/agentic-web-census; research; read-only)`. The 21 Nov 2026 pilot ran before this repository existed, with `AgenticWebCensus/0.1 (research; read-only; checks public discovery files)`.
+- **Opting out.** Add `User-agent: AgenticWebCensus` and `Disallow: /` to robots.txt, or open an issue here.
 - **It respects robots.txt.** A site that disallows `/` for `agenticwebcensus` is skipped after robots.txt is read. The home page is fetched only where robots.txt does not disallow `/` for all agents.
 - **It doesn't count what it can't see.** Sites that answer most probes with 401, 403, 429 or 503 (bot walls) are reported apart from the measured set.
 - 8-second timeout per request, 512 KB cap per response.
@@ -53,3 +54,11 @@ The domain list is the [Tranco](https://tranco-list.eu/) top 1M. Each run record
 - It sees discovery files, not behaviour. A site can verify Web Bot Auth signatures, or accept agent orders through a platform, without publishing anything checked here.
 - Popular-site lists over-represent large platforms and under-represent small shops. A shop-focused sample (platform storefronts) is the planned second list.
 - Bot walls hide some sites. They are counted, not guessed.
+
+## Results
+
+- [Pilot, 21 Nov 2026: Tranco top 10,000](results/pilot-2026-11-21-REPORT.md)
+
+## Licence
+
+Code: MIT. Results in `results/`: CC BY 4.0. Please cite as: Suresh, T. (2026). *Agentic Web Census*. https://github.com/frostyhand/agentic-web-census

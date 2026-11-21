@@ -1,7 +1,7 @@
 // Re-check llms.txt hits from a run with the stricter H1 rule; writes the run back with updated flags.
 import { readFileSync, writeFileSync } from 'node:fs';
 
-const UA = 'AgenticWebCensus/0.1 (research; read-only; checks public discovery files)';
+const UA = 'AgenticWebCensus/0.1 (+https://github.com/frostyhand/agentic-web-census; research; read-only)';
 const file = process.argv[2];
 const rows = readFileSync(file, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
 const hits = rows.filter((r) => r.found?.llms_txt);

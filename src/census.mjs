@@ -6,7 +6,7 @@
 import { createReadStream, createWriteStream, existsSync, readFileSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 
-const UA = 'AgenticWebCensus/0.1 (research; read-only; checks public discovery files)';
+const UA = 'AgenticWebCensus/0.1 (+https://github.com/frostyhand/agentic-web-census; research; read-only)';
 const TIMEOUT_MS = 8000;
 const MAX_BODY = 512 * 1024;
 
