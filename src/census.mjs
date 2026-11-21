@@ -6,7 +6,7 @@
 import { createReadStream, createWriteStream, existsSync, readFileSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 
-const VERSION = '0.2';
+const VERSION = '0.2.1';
 const UA = `AgenticWebCensus/${VERSION} (+https://github.com/frostyhand/agentic-web-census; research; read-only)`;
 const TIMEOUT_MS = 8000;
 const MAX_BODY = 512 * 1024;
@@ -94,7 +94,16 @@ function sameSite(finalUrl, domain) {
   } catch { return false; }
 }
 
-const looksHtml = (r) => r.type.includes('text/html') || /^\s*<(!doctype|html|head|body)/i.test(r.body);
+// Where a redirected document ended up: the host, and whether the path stayed the same.
+// A same-path move to another host (example.com to www.example.com) is host canonicalisation, not a path redirect.
+function finalOf(finalUrl, path) {
+  try {
+    const u = new URL(finalUrl);
+    return { host: u.hostname.toLowerCase(), same_path: u.pathname === path };
+  } catch { return null; }
+}
+
+const looksHtml =(r) => r.type.includes('text/html') || /^\s*<(!doctype|html|head|body)/i.test(r.body);
 
 function validJson(r, domain) {
   if (r.status !== 200 || !sameSite(r.url, domain) || looksHtml(r)) return null;
@@ -186,6 +195,7 @@ async function scanOrigin(domain) {
       const j = validJson(r, domain);
       if (j && !Array.isArray(j) && REQUIRED[name](new Set(Object.keys(j)))) {
         rec.found[name] = { keys: Object.keys(j).slice(0, 12), first_status: r.first, hops: r.hops };
+        if (r.hops) rec.found[name].final = finalOf(r.url, path);
       }
     } catch {}
   }
@@ -194,7 +204,10 @@ async function scanOrigin(domain) {
       const r = note(await fetchText(base + path));
       // llms.txt must open with a Markdown H1, as its proposal requires.
       const h1 = name !== 'llms_txt' || /^\s*#\s+\S/.test(r.body.replace(/^﻿/, ''));
-      if (validText(r, domain) && h1) rec.found[name] = { first_status: r.first, hops: r.hops };
+      if (validText(r, domain) && h1) {
+        rec.found[name] = { first_status: r.first, hops: r.hops };
+        if (r.hops) rec.found[name].final = finalOf(r.url, path);
+      }
     } catch {}
   }
   // Home page: WebMCP signals and commerce platform, only if robots does not block '/'.

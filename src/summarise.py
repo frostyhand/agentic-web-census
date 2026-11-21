@@ -75,13 +75,16 @@ out.append(f"\nSites with at least one agent protocol document (anything beyond 
 hop_rows = [(k, v) for r in measured for k, v in (r.get("found") or {}).items() if isinstance(v, dict) and "hops" in v]
 if hop_rows:
     out.append("\n**Served directly or through a redirect** (census 0.2 and later)\n")
-    out.append("| Signal | Direct 200 | Through a redirect |")
-    out.append("|---|---|---|")
+    out.append("| Signal | Direct 200 | Redirect, same path (host change only) | Redirect to another path | Redirect, target not recorded |")
+    out.append("|---|---|---|---|---|")
     for key, label, _ in SIGNALS:
         d = sum(1 for k, v in hop_rows if k == key and v["hops"] == 0)
-        rd = sum(1 for k, v in hop_rows if k == key and v["hops"] > 0)
-        if d or rd:
-            out.append(f"| {label} | {d} | {rd} |")
+        red = [v for k, v in hop_rows if k == key and v["hops"] > 0]
+        same = sum(1 for v in red if (v.get("final") or {}).get("same_path") is True)
+        other = sum(1 for v in red if (v.get("final") or {}).get("same_path") is False)
+        unknown = len(red) - same - other
+        if d or red:
+            out.append(f"| {label} | {d} | {same} | {other} | {unknown} |")
 
 with_robots = [r for r in measured if r.get("robots")]
 out.append(f"\n**robots.txt** ({len(with_robots)} measured sites serve one)\n")
