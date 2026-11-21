@@ -71,6 +71,18 @@ for key, label, path in SIGNALS:
 any_agent = sum(1 for r in measured if set((r.get("found") or {})) - {"llms_txt"})
 out.append(f"\nSites with at least one agent protocol document (anything beyond llms.txt): {any_agent} ({pct(any_agent, len(measured))}).")
 
+# Census 0.2 and later record each document's first status and redirect hops (UCP profiles MUST NOT redirect).
+hop_rows = [(k, v) for r in measured for k, v in (r.get("found") or {}).items() if isinstance(v, dict) and "hops" in v]
+if hop_rows:
+    out.append("\n**Served directly or through a redirect** (census 0.2 and later)\n")
+    out.append("| Signal | Direct 200 | Through a redirect |")
+    out.append("|---|---|---|")
+    for key, label, _ in SIGNALS:
+        d = sum(1 for k, v in hop_rows if k == key and v["hops"] == 0)
+        rd = sum(1 for k, v in hop_rows if k == key and v["hops"] > 0)
+        if d or rd:
+            out.append(f"| {label} | {d} | {rd} |")
+
 with_robots = [r for r in measured if r.get("robots")]
 out.append(f"\n**robots.txt** ({len(with_robots)} measured sites serve one)\n")
 out.append("| Agent | Named in robots.txt | Whole site disallowed |")

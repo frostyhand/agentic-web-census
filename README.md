@@ -49,6 +49,16 @@ python3 src/summarise.py results/run.jsonl
 
 The domain list is the [Tranco](https://tranco-list.eu/) top 1M. Each run records the list ID: the pilot used `46YVX`, downloaded 21 Nov 2026.
 
+## Monthly editions
+
+From census 0.2 (21 Nov 2026), every response records its first HTTP status and the number of redirect hops, so documents served directly can be told apart from documents reached through a redirect. The UCP specification says business profiles MUST NOT redirect. The summary reports both.
+
+Monthly editions run on a fixed panel, the top 10,000 domains of Tranco list 46YVX (`data/panel/tranco-46YVX-top10k.csv`), so each edition compares like with like:
+
+```bash
+bash scripts/snapshot.sh
+```
+
 ## Limits
 
 - It sees discovery files, not behaviour. A site can verify Web Bot Auth signatures, or accept agent orders through a platform, without publishing anything checked here.

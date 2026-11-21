@@ -6,7 +6,8 @@
 import { createReadStream, createWriteStream, existsSync, readFileSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 
-const UA = 'AgenticWebCensus/0.1 (+https://github.com/frostyhand/agentic-web-census; research; read-only)';
+const VERSION = '0.2';
+const UA = `AgenticWebCensus/${VERSION} (+https://github.com/frostyhand/agentic-web-census; research; read-only)`;
 const TIMEOUT_MS = 8000;
 const MAX_BODY = 512 * 1024;
 
@@ -52,12 +53,24 @@ const AI_AGENTS = [
   'bytespider', 'ccbot', 'amazonbot', 'mistralai-user', 'duckassistbot',
 ];
 
+// Redirects are followed by hand so every response records its first status and hop count.
+// UCP says profiles MUST NOT redirect, so the summary can report direct and redirected documents apart.
+const MAX_HOPS = 5;
 async function fetchText(url) {
-  const res = await fetch(url, {
-    headers: { 'user-agent': UA, accept: '*/*' },
-    redirect: 'follow',
-    signal: AbortSignal.timeout(TIMEOUT_MS),
-  });
+  const signal = AbortSignal.timeout(TIMEOUT_MS);
+  let res, cur = url, first = null, hops = 0;
+  for (;;) {
+    res = await fetch(cur, { headers: { 'user-agent': UA, accept: '*/*' }, redirect: 'manual', signal });
+    if (first === null) first = res.status;
+    const loc = res.headers.get('location');
+    if (res.status >= 300 && res.status < 400 && loc && hops < MAX_HOPS) {
+      await res.body?.cancel();
+      cur = new URL(loc, cur).href;
+      hops++;
+      continue;
+    }
+    break;
+  }
   const reader = res.body?.getReader();
   let size = 0;
   const chunks = [];
@@ -71,7 +84,7 @@ async function fetchText(url) {
     }
   }
   const body = Buffer.concat(chunks).toString('utf8');
-  return { status: res.status, url: res.url, type: (res.headers.get('content-type') || '').toLowerCase(), body };
+  return { status: res.status, url: cur, first, hops, type: (res.headers.get('content-type') || '').toLowerCase(), body };
 }
 
 function sameSite(finalUrl, domain) {
@@ -138,7 +151,7 @@ const COMMERCE_SIGNS = [
 ];
 
 async function scanOrigin(domain) {
-  const rec = { domain, ts: new Date().toISOString(), reachable: false };
+  const rec = { domain, v: VERSION, ts: new Date().toISOString(), reachable: false };
   let base = null;
   for (const host of [domain, 'www.' + domain]) {
     try {
@@ -169,8 +182,11 @@ async function scanOrigin(domain) {
   const note = (r) => { if ([401, 403, 429, 503].includes(r.status)) rec.denied++; return r; };
   for (const [name, path] of Object.entries(JSON_PROBES)) {
     try {
-      const j = validJson(note(await fetchText(base + path)), domain);
-      if (j && !Array.isArray(j) && REQUIRED[name](new Set(Object.keys(j)))) rec.found[name] = { keys: Object.keys(j).slice(0, 12) };
+      const r = note(await fetchText(base + path));
+      const j = validJson(r, domain);
+      if (j && !Array.isArray(j) && REQUIRED[name](new Set(Object.keys(j)))) {
+        rec.found[name] = { keys: Object.keys(j).slice(0, 12), first_status: r.first, hops: r.hops };
+      }
     } catch {}
   }
   for (const [name, path] of Object.entries(TEXT_PROBES)) {
@@ -178,7 +194,7 @@ async function scanOrigin(domain) {
       const r = note(await fetchText(base + path));
       // llms.txt must open with a Markdown H1, as its proposal requires.
       const h1 = name !== 'llms_txt' || /^\s*#\s+\S/.test(r.body.replace(/^﻿/, ''));
-      if (validText(r, domain) && h1) rec.found[name] = true;
+      if (validText(r, domain) && h1) rec.found[name] = { first_status: r.first, hops: r.hops };
     } catch {}
   }
   // Home page: WebMCP signals and commerce platform, only if robots does not block '/'.
