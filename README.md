@@ -28,8 +28,8 @@ Some of these paths are fixed by a published specification and some are proposal
 
 ## How it behaves
 
-- **Read-only.** It sends about ten GET requests per site and nothing else.
-- **It says what it is.** The user agent is `AgenticWebCensus/0.1 (+https://github.com/frostyhand/agentic-web-census; research; read-only)`. The 21 Nov 2026 pilot ran before this repository existed, with `AgenticWebCensus/0.1 (research; read-only; checks public discovery files)`.
+- **Read-only.** It sends about twelve GET requests per site and nothing else.
+- **It says what it is.** The user agent is `AgenticWebCensus/<version> (+https://github.com/frostyhand/agentic-web-census; research; read-only)`. The 21 Nov 2026 pilot ran before this repository existed, with `AgenticWebCensus/0.1 (research; read-only; checks public discovery files)`.
 - **Opting out.** Add `User-agent: AgenticWebCensus` and `Disallow: /` to robots.txt, or open an issue here.
 - **It respects robots.txt.** A site that disallows `/` for `agenticwebcensus` is skipped after robots.txt is read. The home page is fetched only where robots.txt does not disallow `/` for all agents.
 - **It doesn't count what it can't see.** Sites that answer most probes with 401, 403, 429 or 503 (bot walls) are reported apart from the measured set.
@@ -52,6 +52,8 @@ The domain list is the [Tranco](https://tranco-list.eu/) top 1M. Each run record
 ## Monthly editions
 
 From census 0.2 (21 Nov 2026), every response records its first HTTP status and the number of redirect hops, so documents served directly can be told apart from documents reached through a redirect. The UCP specification says business profiles MUST NOT redirect. The summary reports both.
+
+From census 0.3, the response at `/.well-known/ucp` is recorded for every measured host, not only for positives: first and final status, redirect hops and target, content type, size, a body hash, whether it parses as JSON, and whether it has a top-level `ucp` member. When that path answers 200, the census also asks one control path that no site should serve (`/.well-known/nonce-` plus a random value, new each run) and compares the two bodies. The summary then reports UCP against the rows of the reporting frame in [UCP discussion #867](https://github.com/Universal-Commerce-Protocol/ucp/discussions/867): row 1 (200 on the probed host, no redirect), row 1a (200 only after a redirect), row 2 (parses as JSON) and row 2 with a `ucp` member, plus the control path counts. Rows 3 and 4 (schema validation, a tool call) are not measured.
 
 Monthly editions run on a fixed panel, the top 10,000 domains of Tranco list 46YVX (`data/panel/tranco-46YVX-top10k.csv`), so each edition compares like with like:
 

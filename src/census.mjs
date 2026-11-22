@@ -5,8 +5,9 @@
 
 import { createReadStream, createWriteStream, existsSync, readFileSync } from 'node:fs';
 import { createInterface } from 'node:readline';
+import { createHash, randomBytes } from 'node:crypto';
 
-const VERSION = '0.2.1';
+const VERSION = '0.3';
 const UA = `AgenticWebCensus/${VERSION} (+https://github.com/frostyhand/agentic-web-census; research; read-only)`;
 const TIMEOUT_MS = 8000;
 const MAX_BODY = 512 * 1024;
@@ -19,6 +20,9 @@ const TOP = Number(args.top ?? 1000);
 const OUT = args.out ?? 'results/run.jsonl';
 const CONCURRENCY = Number(args.concurrency ?? 64);
 const ONLY = args.domains ? args.domains.split(',') : null;
+// Control path for the UCP probe: a path no site should serve, new for every run.
+// Asked only when /.well-known/ucp answered 200, and compared by body, not by status.
+const CONTROL_PATH = `/.well-known/nonce-${randomBytes(4).toString('hex')}`;
 
 // Each probe: a path, how to validate a 200 response, and what to record.
 const JSON_PROBES = {
@@ -113,6 +117,25 @@ function validJson(r, domain) {
   } catch { return null; }
 }
 
+const digest = (body) => createHash('sha256').update(body).digest('hex').slice(0, 16);
+
+// One response at a UCP path, recorded for every host so the summary can report the
+// reporting frame's rows (UCP discussion #867): 1 (200 on the probed host, no redirect),
+// 1a (200 only after a redirect), 2 (parses as JSON), plus the top-level ucp member.
+function ucpResponse(r, path) {
+  const out = { first_status: r.first, status: r.status, hops: r.hops, type: r.type.split(';')[0], bytes: Buffer.byteLength(r.body) };
+  if (r.hops) out.final = finalOf(r.url, path);
+  if (r.status === 200) {
+    out.sha = digest(r.body);
+    let j;
+    try { j = JSON.parse(r.body); } catch { j = undefined; }
+    out.json = j === undefined ? null : Array.isArray(j) ? 'array' : j && typeof j === 'object' ? 'object' : 'scalar';
+    out.ucp_member = out.json === 'object' && Object.hasOwn(j, 'ucp');
+    if (out.ucp_member && j.ucp && typeof j.ucp === 'object' && typeof j.ucp.version === 'string') out.version = j.ucp.version.slice(0, 20);
+  }
+  return out;
+}
+
 function validText(r, domain) {
   if (r.status !== 200 || !sameSite(r.url, domain) || looksHtml(r)) return false;
   return r.body.trim().length > 20;
@@ -192,12 +215,21 @@ async function scanOrigin(domain) {
   for (const [name, path] of Object.entries(JSON_PROBES)) {
     try {
       const r = note(await fetchText(base + path));
+      if (name === 'ucp') rec.ucp_path = ucpResponse(r, path);
       const j = validJson(r, domain);
       if (j && !Array.isArray(j) && REQUIRED[name](new Set(Object.keys(j)))) {
         rec.found[name] = { keys: Object.keys(j).slice(0, 12), first_status: r.first, hops: r.hops };
         if (r.hops) rec.found[name].final = finalOf(r.url, path);
       }
     } catch {}
+  }
+  if (rec.ucp_path?.status === 200) {
+    try {
+      const c = ucpResponse(await fetchText(base + CONTROL_PATH), CONTROL_PATH);
+      rec.ucp_control = { path: CONTROL_PATH, first_status: c.first_status, status: c.status, hops: c.hops, type: c.type, bytes: c.bytes, final: c.final, sha: c.sha, same_body: Boolean(c.sha) && c.sha === rec.ucp_path.sha };
+    } catch (e) {
+      rec.ucp_control = { path: CONTROL_PATH, error: String(e?.cause?.code || e?.name || e).slice(0, 60) };
+    }
   }
   for (const [name, path] of Object.entries(TEXT_PROBES)) {
     try {

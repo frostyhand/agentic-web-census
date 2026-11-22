@@ -86,6 +86,39 @@ if hop_rows:
         if d or red:
             out.append(f"| {label} | {d} | {same} | {other} | {unknown} |")
 
+# Census 0.3 and later record the response at /.well-known/ucp for every measured host, and a
+# control path when it answered 200, so the run can be reported against the UCP reporting frame
+# (discussion #867). Rows 3 and 4 need schema validation and a tool call; this census does neither.
+framed = [r for r in measured if r.get("ucp_path")]
+if framed:
+    up = lambda r: r["ucp_path"]
+    row1 = [r for r in framed if up(r)["first_status"] == 200 and up(r)["hops"] == 0]
+    row1a = [r for r in framed if up(r)["hops"] > 0 and up(r)["status"] == 200]
+    row1a_off = [r for r in row1a if not ((up(r).get("final") or {}).get("host", "") == r["domain"] or (up(r).get("final") or {}).get("host", "").endswith("." + r["domain"]))]
+    row2 = [r for r in row1 if up(r).get("json")]
+    row2u = [r for r in row2 if up(r).get("ucp_member")]
+    row1a_u = [r for r in row1a if up(r).get("ucp_member")]
+    ctl = lambda g: [r for r in g if (r.get("ucp_control") or {}).get("status") == 200]
+    same = lambda g: [r for r in g if (r.get("ucp_control") or {}).get("same_body")]
+    asked = lambda g: [r for r in g if "status" in (r.get("ucp_control") or {})]
+    ctl_path = next((r["ucp_control"]["path"] for r in framed if r.get("ucp_control")), "none sent")
+    out.append(f"\n**UCP against the reporting frame** (census 0.3 and later; {len(framed)} measured hosts; control path `{ctl_path}`)\n")
+    out.append("| row | hosts |")
+    out.append("|---|---|")
+    out.append(f"| 1. HTTP 200 on the probed host, no redirect | {len(row1)} |")
+    out.append(f"| of row 1, control path also 200 | {len(ctl(row1))} of {len(asked(row1))} asked |")
+    out.append(f"| of row 1, control path 200 with the same body | {len(same(row1))} |")
+    out.append(f"| 1a. 200 only after a redirect (excluded from row 2) | {len(row1a)} (to another site: {len(row1a_off)}) |")
+    out.append(f"| 2. row 1 and parses as JSON | {len(row2)} |")
+    out.append(f"| row 2 + top-level `ucp` member | {len(row2u)} |")
+    out.append(f"| row 2 + `ucp` member, control path not the same body | {len(row2u) - len(same(row2u))} |")
+    out.append(f"| 1a + `ucp` member (reported apart, not a positive) | {len(row1a_u)} |")
+    out.append("| 3. valid profile | not measured |")
+    out.append("| 4. protocol response | not measured |")
+    vers = Counter(up(r).get("version") or "none" for r in row2u)
+    if vers:
+        out.append("\nDeclared `ucp.version` among row 2 + `ucp` member: " + ", ".join(f"`{k}` {v}" for k, v in vers.most_common()))
+
 with_robots = [r for r in measured if r.get("robots")]
 out.append(f"\n**robots.txt** ({len(with_robots)} measured sites serve one)\n")
 out.append("| Agent | Named in robots.txt | Whole site disallowed |")
